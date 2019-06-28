@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Confessions</title>
+    <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css'>
+    <script src="https://unpkg.com/arweave/bundles/web.bundle.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.2.1/js/bootstrap.min.js"></script>
+    <script>
+    var logged = false;
+    var user_address = '';
+    var key = '';
+    var logout;
+
+    function onBodyload(){
+      logout = document.getElementById('logout').cloneNode(true);
+
+      if(	document.getElementById("logout")!=null){
+        document.getElementById("logout").remove();
+      }
+
+      document.body.append(createLoginForm());
+    }
+
+    function logoff(){
+      if(	document.getElementById("confession-form")!=null){
+        document.getElementById("confession-form").remove();
+      }
+      document.body.append(createLoginForm());
+      if(	document.getElementById("logout")!=null){
+        document.getElementById("logout").remove();
+      }
+      if(	document.getElementById("confession")!=null){
+        document.getElementById("confession").remove();
+      }
+      logged = false;
+      user_address = '';
+      key = '';
+    }
+
+    function refresh(){
+      if(document.getElementById('logout')!=null){
+        if(	document.getElementById("confession")!=null){
+          document.getElementById("confession").remove();
+        }
+        if(	document.getElementById("confession-form")!=null){
+          document.getElementById("confession-form").remove();
+        }
+        document.body.append(createConfessionForm());
+        var myNode = document.getElementById("confessions-list");
+        while (myNode.firstChild) {
+            myNode.removeChild(myNode.firstChild);
+        }
+        getTransactionsByAddress(user_address);
+      }
+      else{
+        if(	document.getElementById("login-form")!=null){
+          document.getElementById("login-form").remove();
+        }
+        document.body.append(createLoginForm());
+      }
+    }
+
+    function getKey(){
+        var filename = document.getElementById("key");
+        if(filename != null){
+            var reader = new FileReader();
+            reader.readAsText(filename.files[0]);
+            reader.onload = function () {
+              document.getElementById("jwk").value = reader.result;
+           };
+       }
+    }
+
+    function validateLogin(){
+      if(document.getElementById("jwk") != null){
+        var jwk = JSON.parse(document.getElementById("jwk").value);
+        arweave.wallets.jwkToAddress(jwk).then((address) => {
+            logged = true;
+  			  	user_address = address;
+  				  key = jwk;
+            if(	document.getElementById("login-form")!=null){
+              document.getElementById("login-form").remove();
+            }
+            document.body.append(createConfessionForm());
+            var myNode = document.getElementById("confessions-list");
+            while (myNode.firstChild) {
+                myNode.removeChild(myNode.firstChild);
+            }
+            getTransactionsByAddress(address);
+            document.getElementsByClassName("nav-item")[0].append(logout);
+        }).catch((error) => {
+  			  console.log(error);
+  		  });
+      }
+    }
+
+    function addLinks(value, index, array){
+      var node = document.createElement("LI");
+      var textnode = document.createTextNode(value);
+      node.appendChild(textnode);
+      node.onclick = function (){
+        arweave.transactions.get(value).then((transaction) => {
+      		var data = transaction.get('data', {decode: true, string: true}).split('|');
+          if(	document.getElementById("confession-form")!=null){
+            document.getElementById("confession-form").remove();
+          }
+          document.body.append(createConfession(data[0], data[1]));
+      	}).catch((error) => {
+      		console.log(error);
+      	});
+      }
+      document.getElementById("confessions-list").appendChild(node);
+    }
+
+    function createConfession(title, subject){
+      var conf_temp = document.createElement("SPAN");
+      conf_temp.id = "confession";
+      conf_temp.innerHTML = '<h1 id = "title" class = "text-center" value="">'+ title +'</h1> \
+        <div class = "card col-md-7 mx-auto"> \
+          <p id = "subject" class = "mx-auto" value="">'+ subject +'</p> \
+        </div>';
+
+      return conf_temp;
+    }
+
+    function createConfessionForm(){
+      var conf_form = document.createElement("SPAN");
+      conf_form.id = "confession-form";
+      conf_form.innerHTML = '<div class="form-group"> \
+          <label for="title"> Title:</label> \
+          <input id = "title" type = "text" class = "form-control col-lg-5" name = "title"> \
+      </div> \
+      <div class = "form-group"> \
+          <label for="subject"> Confession:</label> \
+          <textarea id="subject" class = "form-control" rows=10 name="subject"></textarea> \
+      </div> \
+      <button class = "btn-primary " type="sbutton" onclick="confess()"> Submit</button> \
+      <h2 class = "text-center"> Previous Confessions</h2> \
+      <ul id = "confessions-list"></ul>'
+
+      return conf_form
+    }
+
+    function createLoginForm(){
+      var div_a = document.createElement("SPAN");
+      div_a.id = "login-form";
+      div_a.innerHTML = '<div class = "card col-md-5 mx-auto"> \
+        <div class = "text-center mx-auto"> \
+            <div class="form-group"> \
+                <label for="key"> Key File</label> \
+                <input id="key" type = "file", name = "key" accept=".json" class = "form-control col-lg-15" onchange="getKey()"> \
+            </div> \
+            <div class="form-group"> \
+                <input id="jwk" class="form-control" type = "hidden" name="jwk" value = ""> \
+            </div> \
+            <button class = "btn-primary" type="button" onclick="validateLogin()"> Submit</button> \
+        </div> \
+      </div>'
+      return div_a;
+    }
+
+    function confess(){
+      arweave.createTransaction({data: document.getElementById("title").value + '|' + document.getElementById("subject").value}, key).then((transaction) =>{
+        transaction.addTag('app', 'ar-confess');
+        transaction.addTag('type', 'confession');
+  			arweave.transactions.sign(transaction, key).then((signedtransaction) => {
+  				arweave.transactions.post(transaction).then((response) => {
+  					refresh();
+  				}).catch((error) => {
+  					console.log(error);
+  				});
+  			}).catch((error) => {
+  				console.log(error);
+  			});
+  		}).catch((error) => {
+  			console.log(error);
+  		});
+    }
+
+    async function getTransactionsByAddress(address) {
+    	const query = {
+    		op: 'equals',
+    		expr1: 'from',
+    		expr2: address
+    	};
+    	const res = await arweave.api.post('arql', query);
+
+    	if(res.data && res.data.length) {
+    		await Promise.all(res.data.map(async linkId => {
+          arweave.transactions.get(linkId).then(transaction => {
+              var check = 0;
+              transaction.get('tags').forEach(tag => {
+                  let key = tag.get('name', {decode: true, string: true});
+                  let value = tag.get('value', {decode: true, string: true});
+                  if((key == 'app' && value == 'ar-confess') || (key == 'type' && value == 'confession')){check++};
+                  if(check == 2){
+                    [linkId].forEach(addLinks);
+                  };
+              });
+          });
+    		}));
+    	}
+    }
+
+    const arweave = Arweave.init({
+        host: 'arweave.net',
+        port: 443,
+        protocol: 'https'
+    });
+    </script>
+</head>
+<body onload="onBodyload()">
+  <nav class="navbar navbar-expand-sm bg-light">
+    <div class="container-fluid">
+      <div class="navbar-header">
+        <p class="navbar-brand" onclick="refresh()"> Dashboard</p>
+      </div>
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <button id = "logout" class="btn btn-secondary" onclick="logoff()"> Log Out</button>
+        </li>
+      </ul>
+    </div>
+  </nav>
+</body>
+</html>
